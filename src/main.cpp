@@ -5,7 +5,7 @@ void ServerThread() {
     OpenSSLWrapper::DTLSConnection serverConnection(OpenSSLWrapper::SocketType::Server);
 
     // 设置服务器证书和私钥
-    if (!serverConnection.setCertificate("./certificate.pem", "./private.pem")) {
+    if (!serverConnection.setCertificate("./server.crt", "./server.key")) {
         std::cout << "Failed to set server certificate and key" << std::endl;
         return;
     }
@@ -25,6 +25,10 @@ void ServerThread() {
 
 void ClientThread() {
     OpenSSLWrapper::DTLSConnection connection(OpenSSLWrapper::SocketType::Client);
+    if (!connection.setCA("./ca-cert.pem")) {
+        std::cout << "Failed to set ca" << std::endl;
+        return;
+    }
 
     // 连接到服务器
     if (connection.connect("127.0.0.1", 4433)) {

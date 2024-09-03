@@ -11,6 +11,7 @@ namespace OpenSSLWrapper{
         ~DTLSConnection();
 
         bool setCertificate(const std::string& certFile, const std::string& keyFile);
+        bool setCA(const std::string& ca);
         bool connect(const std::string& address, int port);
         void disconnect();
         int send(const char* data, int size);

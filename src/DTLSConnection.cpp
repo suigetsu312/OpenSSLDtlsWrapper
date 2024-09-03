@@ -25,6 +25,18 @@ OpenSSLWrapper::DTLSConnection::~DTLSConnection() {
     }
     EVP_cleanup();
 }
+bool OpenSSLWrapper::DTLSConnection::setCA(const std::string& ca){
+    if (!ctx_) {
+        std::cout << "SSL_CTX is not initialized" << std::endl;
+        return false;
+    }
+    // 如果需要双向认证
+    if (!SSL_CTX_load_verify_locations(ctx_, ca.c_str(), nullptr)) {
+        std::cout << "Error loading CA certificate.\n" << std::endl;
+        return false;
+    }
+    return true;
+}
 
 bool OpenSSLWrapper::DTLSConnection::setCertificate(const std::string& certFile, const std::string& keyFile) {
     if (!ctx_) {
@@ -89,13 +101,11 @@ bool OpenSSLWrapper::DTLSConnection::connect(const std::string& address, int por
     sslWrapper_ = std::make_unique<SSLWrapper>(ctx_);
     BIO *bio = BIO_new_dgram(socket_fd_, BIO_NOCLOSE);
 
-    if (sslWrapper_) {
-        BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, &target_addr);
-        std::cout << "setBIO" << std::endl;
-        sslWrapper_->setBIO(bio);
-    }
+    BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, &target_addr);
+    sslWrapper_->setBIO(bio);
+
     int res = this->type_ == SocketType::Server ? sslWrapper_->accept(socket_fd_) : sslWrapper_->connect(socket_fd_);
-    if (res); {
+    if (res){
         std::cout << (int)this->type_ << " " << sslWrapper_->get_error(res) << std::endl;
         std::cout << (int)this->type_ << " DTLS connection failed" << std::endl;
         sslWrapper_.reset();  // 失敗時釋放資源
