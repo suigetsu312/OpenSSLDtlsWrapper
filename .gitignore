@@ -1,8 +1,12 @@
 openssl33
 cert
 *.crt
-*.crs
+*.csr
 *.key
 *.pem
 dtls_example
 *.o
+client
+Server
+*.srl
+key
