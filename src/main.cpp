@@ -2,45 +2,53 @@
 #include "DTLSConnection.hpp"
 
 void ServerThread() {
-    OpenSSLWrapper::DTLSConnection serverConnection(OpenSSLWrapper::SocketType::Server);
-
-    // 设置服务器证书和私钥
-    if (!serverConnection.setCertificate("./server.crt", "./server.key")) {
-        std::cout << "Failed to set server certificate and key" << std::endl;
-        return;
-    }
+    OpenSSLWrapper::DTLSConnection serverConnection(OpenSSLWrapper::SocketType::Server, "./key/ServerCert.crt", "./key/ServerCert.pem");
 
     // 绑定端口并开始监听连接
-    if (serverConnection.connect("127.0.0.1", 4433)) {
+    if (!serverConnection.connect("127.0.0.1", 4433)) {
+        return;
+        serverConnection.disconnect();
+    }
+    while(true){
         char buffer[1024];
-        if (serverConnection.receive(buffer, sizeof(buffer))) {
-            std::cout << "Received message: " << buffer << std::endl;
+        int ret = serverConnection.receive(buffer, sizeof(buffer));
+        if (ret > 0) {
+            std::string str(buffer);
+            std::cout << "Received message: " << str << std::endl;
 
             const char* response = "Hello, DTLS Client!";
             serverConnection.send(response, strlen(response));
         }
-        serverConnection.disconnect();
-    }
+        if(ret < 0){
+            std::cout << "Received Failed" << std::endl;
+        }
+    };
+    serverConnection.disconnect();
 }
 
 void ClientThread() {
-    OpenSSLWrapper::DTLSConnection connection(OpenSSLWrapper::SocketType::Client);
-    if (!connection.setCA("./ca-cert.pem")) {
-        std::cout << "Failed to set ca" << std::endl;
+    OpenSSLWrapper::DTLSConnection connection(OpenSSLWrapper::SocketType::Client, "./key/RootCA.crt");
+        // 绑定端口并开始监听连接
+    if (!connection.connect("127.0.0.1", 4433)) {
+        connection.disconnect();
         return;
     }
 
-    // 连接到服务器
-    if (connection.connect("127.0.0.1", 4433)) {
-        const char* message = "Hello, DTLS Server!";
-        connection.send(message, strlen(message));
-
+    const char* response = "Hello, DTLS Server!";
+    connection.send(response, strlen(response));
+    while(true){
         char buffer[1024];
-        if (connection.receive(buffer, sizeof(buffer))) {
-            std::cout << "Received response: " << buffer << std::endl;
+        int ret = connection.receive(buffer, sizeof(buffer));
+        if (ret > 0) {
+            std::string str(buffer);
+            std::cout << "Received message: " << str << std::endl;
+            connection.send(response, strlen(response));
         }
-        connection.disconnect();
-    }
+        if(ret < 0){
+            std::cout << "Received Failed" << std::endl;
+        }
+    };
+    connection.disconnect();
 }
 
 int main() {

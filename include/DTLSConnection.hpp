@@ -2,40 +2,52 @@
 #define OpenSSL_DTLSCONNECTION
 #include <SSLWrapper.hpp>
 #include <SocketType.hpp>
-#include<netinet/in.h>
+#include <netinet/in.h>
+#include <DTLSConnectOption.hpp>
 #include <memory>
 namespace OpenSSLWrapper{
     class DTLSConnection {
+
     public:
-        DTLSConnection(SocketType type);
+        DTLSConnection(const std::string& certFile, 
+                       const std::string& keyFile,
+                       const std::string& ca = nullptr );
+
+        DTLSConnection(const std::string& certFile, 
+                const std::string& keyFile);
+
+        DTLSConnection(const std::string& ca);
+        DTLSConnection(SocketType type, const std::string& ca);
+        DTLSConnection(SocketType type, const std::string& certFile, 
+                       const std::string& keyFile);
         ~DTLSConnection();
+        bool    connect(ConnectOption option);
+        bool    connect(const std::string& address, int port);
+        bool    disconnect(DisConnectOption option);
+        void    disconnect();
+        int     send(const char* data, int size);
+        int     receive(char* buffer, int size);
+        bool connected = false;
 
-        bool setCertificate(const std::string& certFile, const std::string& keyFile);
-        bool setCA(const std::string& ca);
-        bool connect(const std::string& address, int port);
-        void disconnect();
-        int send(const char* data, int size);
-        int receive(char* buffer, int size);
-        
+    protected:
+        bool    initializeSocket(const std::string& address, int port);
+        bool    initializeSSL();
+        bool            setCertificate(const std::string& certFile, 
+                                       const std::string& keyFile);
+        bool            setCA(const std::string& ca);
+        bool            ctxInit();
+        bool client_connect();
+        bool server_accept();
 
-    private:
-        bool initializeSocket(const std::string& address, int port);
-        bool initializeSSL();
-        std::unique_ptr<SSLWrapper> sslWrapper_;
         SSL_CTX* ctx_;
         int socket_fd_;
-        SocketType type_;
+        std::mutex conn_mutex;
         struct sockaddr_in target_addr;
-        static int password_callback(char *buf, int size, int rwflag, void *userdata) {
-            const char *password = "3263"; // 這裡替換成你的密碼
-            strncpy(buf, password, size);
-            buf[size - 1] = '\0';
-            return strlen(buf);
-        }
-
+        const std::string& certFile_;
+        const std::string& keyFile_;
+        const std::string& ca_;
+        SocketType type_;
+        std::unique_ptr<SSLWrapper> sslWrapper_;
     };
 }
-
-
-
 #endif
