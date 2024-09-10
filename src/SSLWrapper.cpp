@@ -71,10 +71,9 @@ void OpenSSLWrapper::SSLWrapper::shutdown(){
     }
 }
 
-void OpenSSLWrapper::SSLWrapper::setBIO(BIO* bio){
-    std::lock_guard<std::mutex> guard(ssl_mutex_);
+void OpenSSLWrapper::SSLWrapper::setBIO(BIO* rbio, BIO* wbio){
     if(ssl_){
-        SSL_set_bio(ssl_, bio, bio);
+        SSL_set_bio(ssl_, rbio, wbio);
     }
 }
 
@@ -83,3 +82,4 @@ int OpenSSLWrapper::SSLWrapper::get_error(int error){
     if(!ssl_) return -1;
     return SSL_get_error(ssl_, error);
 }
+

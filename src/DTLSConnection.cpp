@@ -4,9 +4,11 @@
 #include "UtilCallbacks.hpp"
 #include <iostream>
 #include <cstring>
+#include <openssl/ssl.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <functional>
 OpenSSLWrapper::DTLSConnection::DTLSConnection(SocketType type, const std::string& ca)
     : certFile_(""), keyFile_(""), ca_(ca), 
               ctx_(nullptr), socket_fd_(-1), target_addr{}, type_(type) {
@@ -44,6 +46,17 @@ OpenSSLWrapper::DTLSConnection::DTLSConnection(SocketType type, const std::strin
 
 }
 
+bool OpenSSLWrapper::DTLSConnection::setBIO(BIO* wbio,BIO* rbio)
+{
+    if(wbio && rbio){
+        // wbio_ = std::make_unique<BIOWrapper>(wbio);
+        // rbio_ = std::make_unique<BIOWrapper>(rbio);
+        std::cout << "設定bio" << std::endl;
+        sslWrapper_->setBIO(wbio,rbio);
+        return true;
+    }
+    return false;
+}
 
 OpenSSLWrapper::DTLSConnection::~DTLSConnection() {
     disconnect();
@@ -162,11 +175,24 @@ bool OpenSSLWrapper::DTLSConnection::connect(const std::string& address, int por
     if (!initializeSocket(address, port)) {
         return false;
     }
-    
+    // 先簡略寫
     
     // 初始化 SSLWrapper
     
-    sslWrapper_ = std::make_unique<SSLWrapper>(ctx_);    
+    sslWrapper_ = std::make_unique<SSLWrapper>(ctx_);
+    BIO* wbio = BIO_new(BIO_s_mem());
+    BIO* rbio = BIO_new(BIO_s_mem());
+
+    setBIO(wbio,rbio);
+
+    // if( wbio_ == nullptr || rbio_ == nullptr){
+    //     std::cout << "請優先初始化bio";
+    //     return false;
+    // }
+
+    sslWrapper_->setSSLFunction([](SSL* ssl){
+        SSL_set_info_callback(ssl, ssl_info_callback);
+    }); 
     bool res = (type_ == SocketType::Server) ? server_accept() : client_connect();
     
     connected = res;
@@ -174,15 +200,24 @@ bool OpenSSLWrapper::DTLSConnection::connect(const std::string& address, int por
     return res;
 }
 bool OpenSSLWrapper::DTLSConnection::server_accept(){
-    BIO *bio = BIO_new_dgram(socket_fd_, BIO_NOCLOSE);
-    sslWrapper_->setBIO(bio);
-    struct timeval timeout;
-    timeout.tv_sec = 5;  // 設置 3 秒超時
-    timeout.tv_usec = 0;
-    BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
-    BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_PEER, 0, &target_addr);
     std::lock_guard<std::mutex> guard(conn_mutex);
+
+    sslWrapper_->setSSLFunction([](SSL* ssl){
+        SSL_set_accept_state(ssl);
+    });
+
     bool res = sslWrapper_->accept(socket_fd_);
+    char buffer[1024];
+
+    int len = ::recv(socket_fd_, buffer, sizeof(buffer), 0);
+    BIO* rb = SSL_get_rbio(sslWrapper_->ssl_);
+
+    if(len > 0)
+    {
+        int len = BIO_write(rb, buffer, sizeof(buffer));
+    
+    }
+
     if (!res){
         std::cout << (int)this->type_ << "Server Side Handshark failed";
         std::cout << " Openssl Error Code : " << sslWrapper_->get_error(res) << std::endl;
@@ -196,15 +231,19 @@ bool OpenSSLWrapper::DTLSConnection::server_accept(){
 
 bool OpenSSLWrapper::DTLSConnection::client_connect(){
 
-    BIO *bio = BIO_new_dgram(socket_fd_, BIO_NOCLOSE);
-    struct timeval timeout;
-    timeout.tv_sec = 5;  // 設置 3 秒超時
-    timeout.tv_usec = 0;
-    BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
-    BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_PEER, 0, &target_addr);
-    sslWrapper_->setBIO(bio);
     std::lock_guard<std::mutex> guard(conn_mutex);
-    bool res = sslWrapper_->connect(socket_fd_);;
+
+    sslWrapper_->setSSLFunction([](SSL* ssl){
+        SSL_set_connect_state(ssl);
+    });
+
+    bool res = sslWrapper_->connect(socket_fd_);
+    char buffer[1024];
+    BIO* wb = SSL_get_wbio(sslWrapper_->ssl_);
+    int len = BIO_read(wb, buffer, sizeof(buffer));
+    ::send(socket_fd_, buffer, len, 0);
+    std::cout << "  BIO_read len : " << len << std::endl;
+
     if (!res){
         std::cout << (int)this->type_ << "Client Side Handshark failed";
         std::cout << " Openssl Error Code : " << sslWrapper_->get_error(res) << std::endl;
@@ -219,7 +258,16 @@ void OpenSSLWrapper::DTLSConnection::disconnect() {
     std::lock_guard<std::mutex> guard(conn_mutex);
     if(!connected){return;}
     connected = false;
-    
+    if(wbio_){
+        wbio_.reset();
+            std::cout << (int)this->type_ << "free wbio_"<< std::endl;
+
+    }
+    if(rbio_){
+        rbio_.reset();
+                    std::cout << (int)this->type_ << "free rbio_"<< std::endl;
+
+    }
     if (sslWrapper_) {
         sslWrapper_->shutdown();
         sslWrapper_.reset();  // 釋放資源

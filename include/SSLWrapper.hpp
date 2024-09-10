@@ -6,6 +6,7 @@
 #include <openssl/err.h>
 #include <mutex>
 #include <iostream>
+#include <functional>
 namespace OpenSSLWrapper{
 
     static void GetError(int error){
@@ -49,12 +50,21 @@ namespace OpenSSLWrapper{
         int read(char* buffer, int size);
         int write(const char* buffer, int size);
         void shutdown();
-        void setBIO(BIO* bio);
+        void setBIO(BIO* rbio, BIO* wbio);
         int get_error(int error);
+        SSL* ssl_;
 
+template<typename Func, typename... Args>
+bool setSSLFunction(Func&& f, Args&&... args) {
+    std::lock_guard<std::mutex> lock(ssl_mutex_);
+    if (ssl_ && f) {
+        f(ssl_, std::forward<Args>(args)...);  // 执行传入的函数并传递参数
+        return true;
+    }
+    return false;
+}
         SSLWrapper& operator=(SSLWrapper&& other);
     private:
-        SSL* ssl_;
         std::mutex ssl_mutex_;
     };
 }
